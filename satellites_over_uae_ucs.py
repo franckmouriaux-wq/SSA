@@ -16,6 +16,9 @@ import csv
 from datetime import datetime
 from skyfield.api import load, wgs84, EarthSatellite
 import os
+import webbrowser
+# For plotting
+import folium
 
 # --- Configuration ---
 UCS_CSV_PATH = r'C:\Users\franc\OneDrive\Python\UCS-Satellite-Database_05012023.csv'  # Update with your actual UCS CSV file path
@@ -119,21 +122,64 @@ def main():
 
             # Prepare filtered list for AOI and decay_date
             satellites_over_aoi = []
+            sat_lats = []
+            sat_lons = []
             for sat in satellites:
                 if is_within_aoi(sat, now):
                     decay_date = getattr(sat, 'decay_date', None)
                     if decay_date is not None and decay_date != '':
                         continue  # Skip satellites that have a decay date
                     satellites_over_aoi.append(sat)
+                    subpoint = sat.at(now).subpoint()
+                    sat_lats.append(subpoint.latitude.degrees)
+                    sat_lons.append(subpoint.longitude.degrees)
 
             print(f"Total satellites over the AOI: {len(satellites_over_aoi)}\n")
+
+            # --- Plotting with Folium ---
+            map_center = [ABU_DHABI_LAT, ABU_DHABI_LON]
+            m = folium.Map(location=map_center, zoom_start=6, tiles='OpenStreetMap')
+            
+            # Draw AOI as a black circle
+            folium.Circle(
+                location=map_center,
+                radius=AOI_RADIUS_KM * 1000,  # Convert km to meters
+                color='black',
+                fill=False,
+                weight=2,
+                popup='Area of Interest'
+            ).add_to(m)
+            
+            # Add center marker
+            folium.Marker(
+                location=map_center,
+                popup='Abu Dhabi (AOI Center)',
+                icon=folium.Icon(color='black', icon='info-sign')
+            ).add_to(m)
+            
+            # Plot satellites as red dots
+            for i, (lat, lon) in enumerate(zip(sat_lats, sat_lons)):
+                sat = satellites_over_aoi[i]
+                folium.CircleMarker(
+                    location=[lat, lon],
+                    radius=5,
+                    color='red',
+                    fill=True,
+                    fillColor='red',
+                    fillOpacity=0.7,
+                    popup=sat.name
+                ).add_to(m)
+            
+            # Save and open map
+            map_file = 'satellites_map.html'
+            m.save(map_file)
+            webbrowser.open('file://' + os.path.abspath(map_file))
+
             print(f"{'NAME':<25} | {'COUNTRY':<10} | {'TYPE':<12} | {'MISSION':<15} | {'USER':<15} | {'ALT(km)':>8} | {'LAT':>8} | {'LON':>9} | {'DECAY_DATE':<20}")
             print("-" * 153)
             count = 0
-            for sat in satellites_over_aoi:
+            for sat, lat, lon in zip(satellites_over_aoi, sat_lats, sat_lons):
                 subpoint = sat.at(now).subpoint()
-                lat = subpoint.latitude.degrees
-                lon = subpoint.longitude.degrees
                 alt = subpoint.elevation.km
                 country = sat.country if sat.country is not None else "Unknown"
                 obj_type = sat.obj_type if hasattr(sat, 'obj_type') and sat.obj_type is not None else "Unknown"
@@ -152,6 +198,8 @@ def main():
             if count == 0:
                 print("No satellites currently in area.")
             time.sleep(1)
+
+
     except KeyboardInterrupt:
         print("\nMonitoring stopped.")
 
