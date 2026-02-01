@@ -1,5 +1,6 @@
 USER_ABBR = {
-    'Military/Commercial': 'Dual Use'
+    'Military/Commercial': 'Dual Use',
+    'Government/Commercial': 'Dual Use'
 }
 MISSION_ABBR = {
     'Communications': 'Comm',
@@ -68,6 +69,8 @@ def fetch_satellite_data():
                 sat.country = entry.get('COUNTRY_CODE', 'Unknown')
                 sat.obj_type = entry.get('OBJECT_TYPE', 'Unknown')
                 sat.norad_id = entry.get('NORAD_CAT_ID', None)
+                # Attach decay_date if present
+                sat.decay_date = entry.get('DECAY_DATE', None)
                 sat_list.append(sat)
             except Exception as e:
                 print(f"[DEBUG] Exception parsing satellite: {e}")
@@ -113,28 +116,39 @@ def main():
             print(f"Satellites currently over UAE (within 1250km of Abu Dhabi):\n")
             print("Note: This list excludes debris and rocket bodies.\n")
             print(f"Total satellites fetched: {len(satellites)}\n")
-            print(f"{'NAME':<25} | {'COUNTRY':<10} | {'TYPE':<12} | {'MISSION':<15} | {'USER':<15} | {'ALT(km)':>8} | {'LAT':>8} | {'LON':>9}")
-            print("-" * 130)
-            count = 0
+
+            # Prepare filtered list for AOI and decay_date
+            satellites_over_aoi = []
             for sat in satellites:
                 if is_within_aoi(sat, now):
-                    subpoint = sat.at(now).subpoint()
-                    lat = subpoint.latitude.degrees
-                    lon = subpoint.longitude.degrees
-                    alt = subpoint.elevation.km
-                    country = sat.country if sat.country is not None else "Unknown"
-                    obj_type = sat.obj_type if hasattr(sat, 'obj_type') and sat.obj_type is not None else "Unknown"
-                    norad_id = str(sat.norad_id) if sat.norad_id is not None else None
-                    mission_full = ucs_data.get(norad_id, {}).get('Mission Type', 'Unknown')
-                    if not mission_full or mission_full.strip() == '':
-                        mission_full = 'Unknown'
-                    mission = MISSION_ABBR.get(mission_full, mission_full)
-                    user_full = ucs_data.get(norad_id, {}).get('User Category', 'Unknown')
-                    if not user_full or user_full.strip() == '':
-                        user_full = 'Unknown'
-                    user = USER_ABBR.get(user_full, user_full)
-                    print(f"{sat.name[:25]:<25} | {country:<10} | {obj_type:<12} | {mission:<15} | {user:<15} | {alt:8.1f} | {lat:8.3f} | {lon:9.3f}")
-                    count += 1
+                    decay_date = getattr(sat, 'decay_date', None)
+                    if decay_date is not None and decay_date != '':
+                        continue  # Skip satellites that have a decay date
+                    satellites_over_aoi.append(sat)
+
+            print(f"Total satellites over the AOI: {len(satellites_over_aoi)}\n")
+            print(f"{'NAME':<25} | {'COUNTRY':<10} | {'TYPE':<12} | {'MISSION':<15} | {'USER':<15} | {'ALT(km)':>8} | {'LAT':>8} | {'LON':>9} | {'DECAY_DATE':<20}")
+            print("-" * 153)
+            count = 0
+            for sat in satellites_over_aoi:
+                subpoint = sat.at(now).subpoint()
+                lat = subpoint.latitude.degrees
+                lon = subpoint.longitude.degrees
+                alt = subpoint.elevation.km
+                country = sat.country if sat.country is not None else "Unknown"
+                obj_type = sat.obj_type if hasattr(sat, 'obj_type') and sat.obj_type is not None else "Unknown"
+                norad_id = str(sat.norad_id) if sat.norad_id is not None else None
+                mission_full = ucs_data.get(norad_id, {}).get('Mission Type', 'Unknown')
+                if not mission_full or mission_full.strip() == '':
+                    mission_full = 'Unknown'
+                mission = MISSION_ABBR.get(mission_full, mission_full)
+                user_full = ucs_data.get(norad_id, {}).get('User Category', 'Unknown')
+                if not user_full or user_full.strip() == '':
+                    user_full = 'Unknown'
+                user = USER_ABBR.get(user_full, user_full)
+                decay_date_str = 'N/A'
+                print(f"{sat.name[:25]:<25} | {country:<10} | {obj_type:<12} | {mission:<15} | {user:<15} | {alt:8.1f} | {lat:8.3f} | {lon:9.3f} | {decay_date_str:<20}")
+                count += 1
             if count == 0:
                 print("No satellites currently in area.")
             time.sleep(1)
